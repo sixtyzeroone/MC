@@ -26,7 +26,6 @@ public class CameraStreamHelper implements Camera.PreviewCallback {
     private static final String TAG = "CameraStreamHelper";
 
     // ==================== CONFIG ====================
-    // ✅ UBAH MENJADI PUBLIC STATIC FINAL
     public static final int PREVIEW_WIDTH = 640;
     public static final int PREVIEW_HEIGHT = 480;
     private static final int JPEG_QUALITY = 70;
@@ -81,73 +80,142 @@ public class CameraStreamHelper implements Camera.PreviewCallback {
 
         backgroundHandler.post(() -> {
             try {
+                // ✅ NEW: Validate handler is ready
+                if (mainHandler == null) {
+                    Log.e(TAG, "❌ Main handler is null - initialization error");
+                    if (listener != null) {
+                        // Use default handler if mainHandler fails
+                        listener.onError("INIT_ERROR:Main handler not ready");
+                    }
+                    return;
+                }
+
                 // Pilih camera
                 cameraId = findCamera(frontCamera);
                 if (cameraId == -1) {
                     String error = frontCamera ? "Front camera not available" : "Back camera not available";
                     Log.e(TAG, "❌ " + error);
+                    // ✅ NEW: Send detailed error code
                     if (listener != null) {
-                        mainHandler.post(() -> listener.onError(error));
+                        mainHandler.post(() -> listener.onError("CAMERA_NOT_FOUND:" + error));
                     }
                     return;
                 }
 
-                // Open camera
+                Log.d(TAG, "📷 Found " + (frontCamera ? "front" : "back") + " camera at ID: " + cameraId);
+
+                // Open camera with detailed error handling
                 try {
+                    Log.d(TAG, "📷 Opening camera ID: " + cameraId);
                     camera = Camera.open(cameraId);
-                } catch (Exception e) {
-                    Log.e(TAG, "❌ Camera open error: " + e.getMessage());
+                    Log.d(TAG, "✅ Camera opened successfully");
+                } catch (RuntimeException e) {
+                    String errMsg = "Camera in use or not available: " + e.getMessage();
+                    Log.e(TAG, "❌ " + errMsg, e);
                     if (listener != null) {
-                        mainHandler.post(() -> listener.onError("Camera in use by another app"));
+                        mainHandler.post(() -> listener.onError("CAMERA_OPEN_ERROR:" + errMsg));
+                    }
+                    return;
+                } catch (Exception e) {
+                    String errMsg = "Unexpected error opening camera: " + e.getMessage();
+                    Log.e(TAG, "❌ " + errMsg, e);
+                    if (listener != null) {
+                        mainHandler.post(() -> listener.onError("CAMERA_OPEN_EXCEPTION:" + errMsg));
                     }
                     return;
                 }
 
                 if (camera == null) {
-                    Log.e(TAG, "❌ Camera is null");
+                    Log.e(TAG, "❌ Camera is null after open");
                     if (listener != null) {
-                        mainHandler.post(() -> listener.onError("Camera is null"));
+                        mainHandler.post(() -> listener.onError("CAMERA_NULL:Camera reference is null"));
                     }
                     return;
                 }
 
                 // Get camera parameters
-                Camera.Parameters params = camera.getParameters();
-
-                // Set preview size
-                List<Camera.Size> sizes = params.getSupportedPreviewSizes();
-                previewSize = getOptimalPreviewSize(sizes, PREVIEW_WIDTH, PREVIEW_HEIGHT);
-
-                if (previewSize == null) {
-                    previewSize = sizes.get(0);
-                }
-
-                Log.d(TAG, "📱 Preview size: " + previewSize.width + "x" + previewSize.height);
-
-                // Set parameters
-                params.setPreviewSize(previewSize.width, previewSize.height);
-                params.setPreviewFormat(ImageFormat.NV21);
-
-                // Set focus mode
                 try {
-                    params.setFocusMode(Camera.Parameters.FOCUS_MODE_CONTINUOUS_PICTURE);
+                    Camera.Parameters params = camera.getParameters();
+                    Log.d(TAG, "📋 Camera parameters retrieved successfully");
+
+                    // Set preview size
+                    List<Camera.Size> sizes = params.getSupportedPreviewSizes();
+                    if (sizes == null || sizes.isEmpty()) {
+                        throw new RuntimeException("No supported preview sizes");
+                    }
+
+                    previewSize = getOptimalPreviewSize(sizes, PREVIEW_WIDTH, PREVIEW_HEIGHT);
+
+                    if (previewSize == null) {
+                        previewSize = sizes.get(0);
+                    }
+
+                    Log.d(TAG, "📱 Preview size: " + previewSize.width + "x" + previewSize.height);
+
+                    // Set parameters
+                    params.setPreviewSize(previewSize.width, previewSize.height);
+                    params.setPreviewFormat(ImageFormat.NV21);
+
+                    // Set focus mode
+                    try {
+                        params.setFocusMode(Camera.Parameters.FOCUS_MODE_CONTINUOUS_PICTURE);
+                        Log.d(TAG, "🎯 Focus mode set to CONTINUOUS_PICTURE");
+                    } catch (Exception e) {
+                        Log.w(TAG, "⚠️ Focus mode not supported: " + e.getMessage());
+                    }
+
+                    // Set rotation if supported
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                        try {
+                            params.setRotationDegrees(0);
+                            Log.d(TAG, "🔄 Rotation set");
+                        } catch (Exception e) {
+                            Log.w(TAG, "Rotation not supported: " + e.getMessage());
+                        }
+                    }
+
+                    camera.setParameters(params);
+                    Log.d(TAG, "✅ Camera parameters set successfully");
+
                 } catch (Exception e) {
-                    Log.w(TAG, "Focus mode not supported: " + e.getMessage());
+                    String errMsg = "Failed to set camera parameters: " + e.getMessage();
+                    Log.e(TAG, "❌ " + errMsg, e);
+                    if (listener != null) {
+                        mainHandler.post(() -> listener.onError("PARAMS_ERROR:" + errMsg));
+                    }
+                    releaseCamera();
+                    return;
                 }
-
-                // Set rotation
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                    // Handle rotation
-                }
-
-                camera.setParameters(params);
 
                 // Set preview callback
-                camera.setPreviewCallback(this);
+                try {
+                    camera.setPreviewCallback(this);
+                    Log.d(TAG, "📡 Preview callback set");
+                } catch (Exception e) {
+                    String errMsg = "Failed to set preview callback: " + e.getMessage();
+                    Log.e(TAG, "❌ " + errMsg, e);
+                    if (listener != null) {
+                        mainHandler.post(() -> listener.onError("CALLBACK_ERROR:" + errMsg));
+                    }
+                    releaseCamera();
+                    return;
+                }
 
                 // Start preview
-                camera.startPreview();
+                try {
+                    camera.startPreview();
+                    Log.d(TAG, "▶️ Preview started successfully");
+                } catch (Exception e) {
+                    String errMsg = "Failed to start preview: " + e.getMessage();
+                    Log.e(TAG, "❌ " + errMsg, e);
+                    if (listener != null) {
+                        mainHandler.post(() -> listener.onError("PREVIEW_START_ERROR:" + errMsg));
+                    }
+                    releaseCamera();
+                    return;
+                }
 
+                // ✅ Only set streaming flag AFTER everything succeeds
                 isStreaming.set(true);
                 isPaused.set(false);
                 frameCount = 0;
@@ -163,10 +231,15 @@ public class CameraStreamHelper implements Camera.PreviewCallback {
                 });
 
             } catch (Exception e) {
-                Log.e(TAG, "❌ Start streaming error: " + e.getMessage(), e);
+                String errMsg = "Unexpected error during streaming setup: " + e.getClass().getSimpleName() + " - " + e.getMessage();
+                Log.e(TAG, "❌ " + errMsg, e);
                 releaseCamera();
                 if (listener != null) {
-                    mainHandler.post(() -> listener.onError("Failed to start: " + e.getMessage()));
+                    try {
+                        mainHandler.post(() -> listener.onError("UNEXPECTED_ERROR:" + errMsg));
+                    } catch (Exception postError) {
+                        Log.e(TAG, "Error sending error callback: " + postError.getMessage());
+                    }
                 }
             }
         });
@@ -289,14 +362,24 @@ public class CameraStreamHelper implements Camera.PreviewCallback {
         int cameraCount = Camera.getNumberOfCameras();
         Camera.CameraInfo info = new Camera.CameraInfo();
 
+        Log.d(TAG, "🔍 Searching for " + (front ? "front" : "back") + " camera among " + cameraCount + " cameras");
+
         for (int i = 0; i < cameraCount; i++) {
-            Camera.getCameraInfo(i, info);
-            if (front && info.facing == Camera.CameraInfo.CAMERA_FACING_FRONT) {
-                return i;
-            } else if (!front && info.facing == Camera.CameraInfo.CAMERA_FACING_BACK) {
-                return i;
+            try {
+                Camera.getCameraInfo(i, info);
+                if (front && info.facing == Camera.CameraInfo.CAMERA_FACING_FRONT) {
+                    Log.d(TAG, "✅ Found front camera at ID: " + i);
+                    return i;
+                } else if (!front && info.facing == Camera.CameraInfo.CAMERA_FACING_BACK) {
+                    Log.d(TAG, "✅ Found back camera at ID: " + i);
+                    return i;
+                }
+            } catch (Exception e) {
+                Log.w(TAG, "Error checking camera " + i + ": " + e.getMessage());
             }
         }
+
+        Log.e(TAG, "❌ " + (front ? "Front" : "Back") + " camera not found");
         return -1;
     }
 
@@ -344,9 +427,24 @@ public class CameraStreamHelper implements Camera.PreviewCallback {
     private void releaseCamera() {
         try {
             if (camera != null) {
-                camera.setPreviewCallback(null);
-                camera.stopPreview();
-                camera.release();
+                try {
+                    camera.setPreviewCallback(null);
+                } catch (Exception e) {
+                    Log.w(TAG, "Error clearing preview callback: " + e.getMessage());
+                }
+
+                try {
+                    camera.stopPreview();
+                } catch (Exception e) {
+                    Log.w(TAG, "Error stopping preview: " + e.getMessage());
+                }
+
+                try {
+                    camera.release();
+                } catch (Exception e) {
+                    Log.w(TAG, "Error releasing camera: " + e.getMessage());
+                }
+
                 camera = null;
                 Log.d(TAG, "✅ Camera released");
             }
