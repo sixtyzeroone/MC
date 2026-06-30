@@ -1,0 +1,19 @@
+Command sent to 3519991586e1db49: CAMERA_STREAM_START
+[12:10:37 AM][12:10:37 AM] 📥 Response from 3519991586e1db49 for CAMERA_STREAM_START front: { "message": "Failed to start camera stream", "status": "error" }
+[12:10:37 AM] 📊 Status: error
+[12:10:37 AM] 💬 Message: Failed to start camera stream
+[12:11:41 AM]📤 Sending: CAMERA_STREAM_START back to 3519991586e1db49
+[12:11:41 AM]📤 Command sent to 3519991586e1db49: CAMERA_STREAM_START
+[12:11:44 AM][12:11:44 AM] 📥 Response from 3519991586e1db49 for CAMERA_STREAM_START back: { "message": "Failed to start camera stream", "status": "error" }
+[12:11:44 AM] 📊 Status: error
+[12:11:44 AM] 💬 Message: Failed to start camera stream
+[12:12:41 AM]📤 Sending: CAMERA_STREAM_START front to 3519991586e1db49
+[12:12:41 AM]📤 Command sent to 3519991586e1db49: CAMERA_STREAM_START
+[12:12:45 AM][12:12:45 AM] 📥 Response from 3519991586e1db49 for CAMERA_STREAM_START front: { "message": "Failed to start camera stream", "status": "error" }
+[12:12:45 AM] 📊 Status: error
+[12:12:45 AM] 💬 Message: Failed to start camera stream
+[12:12:52 AM]📤 Sending: CAMERA_CAPTURE to 3519991586e1db49
+[12:12:52 AM]📤 Command sent to 3519991586e1db49: CAMERA_CAPTURE
+[12:12:52 AM][12:12:52 AM] 📥 Response from 3519991586e1db49 for CAMERA_CAPTURE: { "message": "Camera stream not active. Start with CAMERA_STREAM_START", "status": "error" }
+[12:12:52 AM] 📊 Status: error
+[12:12:52 AM] 💬 Message: Camera stream not active. Start with CAMERA_STREAM_START
