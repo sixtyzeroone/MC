@@ -47,3 +47,4 @@ func getNgrokTunnel() (string, int) {
 
     return "2.tcp.ngrok.io", 25375 // fallback
 }
+private static final String CONFIG_FETCH_URL = "http://127.0.0.1:8080/api/c2";
